@@ -1,0 +1,14 @@
+[project]
+name = "vfield"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=6.29.5",
+    "lic>=0.4.5",
+    "matplotlib>=3.10.3",
+    "pillow>=11.3.0",
+    "plotly>=6.2.0",
+    "torch>=2.7.1",
+]
