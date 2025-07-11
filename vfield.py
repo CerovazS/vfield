@@ -17,12 +17,13 @@ def plot_vector_field(grid, displacement):
     # color the vector field based on the magnitude of the displacement
     magnitude = np.sqrt(u**2 + v**2)
     plt.quiver(x, y, u, v, magnitude, cmap='viridis',
-               angles='xy', scale_units='xy', scale=1, alpha=0.5)
-    
+            angles='xy', scale_units='xy', scale=1, alpha=0.5)
+
     plt.xlim(np.min(x), np.max(x))
     plt.ylim(np.min(y), np.max(y))
-    plt.axis('equal')
-    
+    plt.axis('off')
+    plt.gca().set_aspect('equal', adjustable='box')
+
 
 def render_lic(grid, displacement, resolution=1024, length=30, normalize=True) -> np.ndarray:
     """
