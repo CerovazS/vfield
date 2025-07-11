@@ -7,12 +7,12 @@ from scipy.interpolate import griddata
 
 
 def plot_vector_field(grid, displacement):
+    """Plot a vector field using matplotlib."""
+
     x = grid[:, 0].numpy()
     y = grid[:, 1].numpy()
     u = displacement[:, 0].numpy()
     v = displacement[:, 1].numpy()
-
-    plt.figure(figsize=(5, 5))
 
     # color the vector field based on the magnitude of the displacement
     magnitude = np.sqrt(u**2 + v**2)
@@ -21,15 +21,23 @@ def plot_vector_field(grid, displacement):
     
     plt.xlim(np.min(x), np.max(x))
     plt.ylim(np.min(y), np.max(y))
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.title('Vector Field')
-    plt.grid()
-    plt.show()
+    plt.axis('equal')
     
 
-def render_lic(grid, displacement, resolution=1024, length=30, normalize=True):
+def render_lic(grid, displacement, resolution=1024, length=30, normalize=True) -> np.ndarray:
+    """
+    Create a Line Integral Convolution (LIC) visualization of a vector field.
 
+    Args:
+        grid: tensor of shape (N, 2) representing the grid points
+        displacement: tensor of shape (N, 2) representing the vector field at each grid point
+        resolution: resolution of the output image (default: 1024)
+        length: length of the LIC lines (default: 30)
+        normalize: whether to normalize the vector field (default: True)
+    
+    Returns:
+        lic_img: numpy array of shape (resolution, resolution) representing the LIC image
+    """
     grid_np = grid.numpy()
     displacement_np = displacement.numpy()
 
@@ -70,38 +78,11 @@ def render_lic(grid, displacement, resolution=1024, length=30, normalize=True):
     lic_img = np.rot90(lic_img, k=3)  # rotate 90 degrees ccw
     lic_img = np.fliplr(lic_img)      # flip left-right
     
-    # display the LIC and vector field side by side
-
-    plt.figure(figsize=(10, 5))
-    
-    plt.subplot(121)
-
-    plt.imshow(lic_img, cmap='gray', origin='lower')
-    plt.title(f'LIC rendering (resolution={resolution}, length={length}, normalize={normalize})')
-    plt.axis('off')
-    
-    plt.subplot(122)
-
-    skip = max(1, resolution // 40)  # subsample for clarity
-    x_sub = x_lic[::skip, ::skip]
-    y_sub = y_lic[::skip, ::skip]
-    u_sub = u[::skip, ::skip]
-    v_sub = v[::skip, ::skip]
-    
-    plt.quiver(x_sub, y_sub, u_sub, v_sub, alpha=0.7, scale=30)
-    plt.xlim(a, b)
-    plt.ylim(c, d)
-    plt.title(f'Vector Field (subsampled every {skip} points)')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
     return lic_img
 
 
 def render_flow_field(grid, displacement, W=4000, H=4000, N_PART=10_000, STEPS=400, 
-                           STEP_SIZE=0.002, ALPHA=2, BG=255, extent=None):
+                           STEP_SIZE=0.002, ALPHA=2, BG=255, extent=None) -> Image:
     """
     Create flow field visualization using explicit particle integration
     
