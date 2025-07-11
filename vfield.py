@@ -27,17 +27,22 @@ def plot_vector_field(grid, displacement):
     plt.show()
     
 
-def render_lic(grid, displacement, R=1.6, RES=1024, length=30, normalize=True):
+def render_lic(grid, displacement, resolution=1024, length=30, normalize=True):
+
+    grid_np = grid.numpy()
+    displacement_np = displacement.numpy()
+
+    a = grid_np[:, 0].min()
+    b = grid_np[:, 0].max()
+    c = grid_np[:, 1].min()
+    d = grid_np[:, 1].max()
 
     # create high-resolution grid
-    x_lic, y_lic = np.mgrid[-R:R:RES*1j, -R:R:RES*1j]
+    x_lic, y_lic = np.mgrid[a:b:resolution*1j, c:d:resolution*1j]
     
     # analytic test field: a clockwise vortex centred at (0,0)
     # u = -y_lic
     # v = x_lic
-        
-    grid_np = grid.numpy()
-    displacement_np = displacement.numpy()
 
     # create points for interpolation (flatten the high-res grid)
     points_lic = np.column_stack((x_lic.ravel(), y_lic.ravel()))
@@ -49,8 +54,8 @@ def render_lic(grid, displacement, R=1.6, RES=1024, length=30, normalize=True):
                         method='linear', fill_value=0.0)
     
     # reshape back to grid
-    u = u_interp.reshape(RES, RES)
-    v = v_interp.reshape(RES, RES)
+    u = u_interp.reshape(resolution, resolution)
+    v = v_interp.reshape(resolution, resolution)
 
     if normalize:
         mag = np.hypot(u, v)
@@ -58,7 +63,7 @@ def render_lic(grid, displacement, R=1.6, RES=1024, length=30, normalize=True):
         v = v / (mag + 1e-9)
 
     # render the LIC
-    seed = lic.gen_seed((RES, RES), noise="white")
+    seed = lic.gen_seed((resolution, resolution), noise="white")
     lic_img = lic.lic(u, v, seed, length=length)
 
     lic_img = np.rot90(lic_img, k=3)  # rotate 90 degrees ccw
@@ -70,21 +75,21 @@ def render_lic(grid, displacement, R=1.6, RES=1024, length=30, normalize=True):
     
     plt.subplot(121)
 
-    plt.imshow(lic_img, cmap='gray', origin='lower', extent=[-R, R, -R, R])
-    plt.title(f'LIC rendering (R={R}, RES={RES})')
+    plt.imshow(lic_img, cmap='gray', origin='lower')
+    plt.title(f'LIC rendering (resolution={resolution}, length={length}, normalize={normalize})')
     plt.axis('off')
     
     plt.subplot(122)
 
-    skip = max(1, RES // 40)  # subsample for clarity
+    skip = max(1, resolution // 40)  # subsample for clarity
     x_sub = x_lic[::skip, ::skip]
     y_sub = y_lic[::skip, ::skip]
     u_sub = u[::skip, ::skip]
     v_sub = v[::skip, ::skip]
     
     plt.quiver(x_sub, y_sub, u_sub, v_sub, alpha=0.7, scale=30)
-    plt.xlim(-R, R)
-    plt.ylim(-R, R)
+    plt.xlim(a, b)
+    plt.ylim(c, d)
     plt.title(f'Vector Field (subsampled every {skip} points)')
     plt.grid(True, alpha=0.3)
     
