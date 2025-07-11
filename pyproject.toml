@@ -10,5 +10,6 @@ dependencies = [
     "matplotlib>=3.10.3",
     "pillow>=11.3.0",
     "plotly>=6.2.0",
+    "scipy>=1.16.0",
     "torch>=2.7.1",
 ]
