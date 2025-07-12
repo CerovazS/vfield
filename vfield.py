@@ -82,26 +82,28 @@ def render_lic(grid, displacement, resolution=1024, length=30, normalize=True) -
     return lic_img
 
 
-def render_flow_field(grid, displacement, W=4000, H=4000, N_PART=10_000, STEPS=400, 
-                           STEP_SIZE=0.002, ALPHA=2, BG=255, extent=None) -> Image:
+def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0) -> Image:
     """
-    Create flow field visualization using explicit particle integration
+    Create flow field visualization using explicit particle integration.
     
     Args:
         W, H: canvas size
-        N_PART: number of particles
-        STEPS: integration steps per particle  
-        STEP_SIZE: step size as fraction of image width
-        ALPHA: opacity per stroke (0-255)
-        BG: background color (0-255)
-        extent: spatial extent for loaded mode, tuple (min_x, max_x, min_y, max_y)
-    """
-    
-    min_x, max_x, min_y, max_y = extent
+        particles: number of particles
+        steps: integration steps per particle
+        step_size: step size as fraction of image width
+        bg_color: background color for the image (default: 0)
 
+    Returns:
+        img: PIL Image object with the flow field visualization
+    """
     # Pre-compute interpolation on a dense grid for speed
     grid_np = grid.numpy()
     displacement_np = displacement.numpy()
+    
+    min_x = grid_np[:, 0].min()
+    max_x = grid_np[:, 0].max()
+    min_y = grid_np[:, 1].min()
+    max_y = grid_np[:, 1].max()
     
     # Create dense interpolation grid
     interp_res = 512  # Resolution for interpolation grid
@@ -140,25 +142,25 @@ def render_flow_field(grid, displacement, W=4000, H=4000, N_PART=10_000, STEPS=4
             return 0.0, 0.0
         
     # ------------- integrate --------------
-    img = Image.new("L", (W, H), BG)
+    img = Image.new("L", (W, H), bg_color)
     drw = ImageDraw.Draw(img, "L")
     
     rng = np.random.default_rng(0)
-    starts_x = rng.uniform(0, W, N_PART)
-    starts_y = rng.uniform(0, H, N_PART)
+    starts_x = rng.uniform(0, W, particles)
+    starts_y = rng.uniform(0, H, particles)
     
     for x0, y0 in zip(starts_x, starts_y):
         x, y = x0, y0
         pts   = []
-        for _ in range(STEPS):
+        for _ in range(steps):
             u, v = F(x, y)
             norm = (u*u + v*v)**0.5 + 1e-6
-            x   += (u / norm) * STEP_SIZE * W
-            y   += (v / norm) * STEP_SIZE * W
+            x   += (u / norm) * step_size * W
+            y   += (v / norm) * step_size * W
             if not (0 <= x < W and 0 <= y < H):
                 break
             pts.append((x, y))
         if len(pts) > 1:
-            drw.line(pts, fill=BG-ALPHA, width=1)   # low-alpha, additive
+            drw.line(pts, fill=255-1, width=1)   # low-alpha, additive
 
     return img
