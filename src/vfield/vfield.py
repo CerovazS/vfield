@@ -3,7 +3,7 @@ from scipy.interpolate import griddata
 from PIL import Image, ImageDraw
 
 
-def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0) -> Image:
+def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image:
     """
     Create flow field visualization using explicit particle integration.
     
@@ -13,6 +13,8 @@ def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps
         steps: integration steps per particle
         step_size: step size as fraction of image width
         bg_color: background color for the image (default: 0)
+        antialias: enable supersampling antialiasing (default: False)
+        aa_factor: antialiasing factor for supersampling (default: 2)
 
     Returns:
         img: PIL Image object with the flow field visualization
@@ -63,25 +65,61 @@ def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps
             return 0.0, 0.0
         
     # ------------- integrate --------------
-    img = Image.new("L", (W, H), bg_color)
+    if antialias:
+        return _render_supersampled(F, W, H, particles, steps, step_size, bg_color, aa_factor)
+    else:
+        # Original rendering method
+        img = Image.new("L", (W, H), bg_color)
+        drw = ImageDraw.Draw(img, "L")
+        
+        rng = np.random.default_rng(0)
+        starts_x = rng.uniform(0, W, particles)
+        starts_y = rng.uniform(0, H, particles)
+        
+        for x0, y0 in zip(starts_x, starts_y):
+            x, y = x0, y0
+            pts   = []
+            for _ in range(steps):
+                u, v = F(x, y)
+                norm = (u*u + v*v)**0.5 + 1e-6
+                x   += (u / norm) * step_size * W
+                y   += (v / norm) * step_size * W
+                if not (0 <= x < W and 0 <= y < H):
+                    break
+                pts.append((x, y))
+            if len(pts) > 1:
+                drw.line(pts, fill=255-bg_color, width=1)   # low-alpha, additive
+
+        return img
+
+
+def _render_supersampled(F, W, H, particles, steps, step_size, bg_color, aa_factor):
+    """
+    Render at higher resolution and downsample for antialiasing.
+    """
+    # Render at higher resolution
+    high_W, high_H = W * aa_factor, H * aa_factor
+    img = Image.new("L", (high_W, high_H), bg_color)
     drw = ImageDraw.Draw(img, "L")
     
     rng = np.random.default_rng(0)
-    starts_x = rng.uniform(0, W, particles)
-    starts_y = rng.uniform(0, H, particles)
+    starts_x = rng.uniform(0, high_W, particles)
+    starts_y = rng.uniform(0, high_H, particles)
     
     for x0, y0 in zip(starts_x, starts_y):
         x, y = x0, y0
-        pts   = []
+        pts = []
         for _ in range(steps):
-            u, v = F(x, y)
+            # Scale coordinates for the flow field function
+            u, v = F(x / aa_factor, y / aa_factor)
             norm = (u*u + v*v)**0.5 + 1e-6
-            x   += (u / norm) * step_size * W
-            y   += (v / norm) * step_size * W
-            if not (0 <= x < W and 0 <= y < H):
+            x += (u / norm) * step_size * high_W
+            y += (v / norm) * step_size * high_H
+            if not (0 <= x < high_W and 0 <= y < high_H):
                 break
             pts.append((x, y))
         if len(pts) > 1:
-            drw.line(pts, fill=255-bg_color, width=1)   # low-alpha, additive
-
-    return img
+            drw.line(pts, fill=255-bg_color, width=aa_factor)
+    
+    # Downsample using high-quality resampling
+    return img.resize((W, H), Image.LANCZOS)
