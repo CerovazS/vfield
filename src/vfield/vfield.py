@@ -1,9 +1,10 @@
 import torch
 import torch.nn.functional as torch_F
 from PIL import Image, ImageDraw
+from tqdm import tqdm
 
 
-def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image:
+def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image.Image:
     """
     Create flow field visualization using explicit particle integration.
     
@@ -104,8 +105,8 @@ def _render_supersampled(F, W, H, particles, steps, step_size, bg_color, aa_fact
     torch.manual_seed(0)  # For reproducibility
     starts_x = torch.rand(particles, device=device) * high_W
     starts_y = torch.rand(particles, device=device) * high_H
-    
-    for x0, y0 in zip(starts_x, starts_y):
+
+    for x0, y0 in tqdm(zip(starts_x, starts_y)):
         x, y = x0, y0
         pts = []
         for _ in range(steps):
@@ -121,7 +122,7 @@ def _render_supersampled(F, W, H, particles, steps, step_size, bg_color, aa_fact
             drw.line(pts, fill=255-bg_color, width=aa_factor)
     
     # Downsample using high-quality resampling
-    return img.resize((W, H), Image.LANCZOS)
+    return img.resize((W, H), Image.Resampling.LANCZOS)
 
 
 def _interpolate_grid(grid_points, values, query_points, interp_res):
@@ -155,7 +156,7 @@ def _interpolate_grid(grid_points, values, query_points, interp_res):
     return interpolated.squeeze(0).squeeze(0)  # [interp_res, interp_res]
 
 
-def render_flow_field_vectorized(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image:
+def render_flow_field_vectorized(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image.Image:
     """
     Vectorized flow field rendering - processes all particles simultaneously.
     Much faster than the loop-based version.
@@ -244,7 +245,7 @@ def render_flow_field_vectorized(grid, displacement, W=1000, H=1000, particles=2
     
     # Downsample if antialiasing
     if antialias:
-        img = img.resize((W, H), Image.LANCZOS)
+        img = img.resize((W, H), Image.Resampling.LANCZOS)
     
     return img
 
