@@ -161,6 +161,6 @@ def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps
                 break
             pts.append((x, y))
         if len(pts) > 1:
-            drw.line(pts, fill=255-1, width=1)   # low-alpha, additive
+            drw.line(pts, fill=255-bg_color, width=1)   # low-alpha, additive
 
     return img
