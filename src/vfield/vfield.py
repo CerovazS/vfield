@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, 
                      bg_color=(0, 0, 0), trace_color=(255, 255, 255), random_colors=False, 
-                     antialias=False, aa_factor=2) -> Image.Image:
+                     antialias=True, aa_factor=2) -> Image.Image:
     """
     Vectorized flow field rendering with proper RGB color support.
     
@@ -17,10 +17,39 @@ def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps
         antialias: Enable antialiasing for smoother output
         aa_factor: Antialiasing factor (higher = better quality but slower)
     """
+    # Determine rendering dimensions
     if antialias:
-        return _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors, aa_factor)
+        render_W, render_H = W * aa_factor, H * aa_factor
     else:
-        return _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors)
+        render_W, render_H = W, H
+    
+    # Get grid bounds
+    min_x = grid[:, 0].min().item()
+    max_x = grid[:, 0].max().item()
+    min_y = grid[:, 1].min().item()
+    max_y = grid[:, 1].max().item()
+    
+    # Create interpolation function
+    interp_res = 512
+    F_vectorized = _create_interpolation_function(grid, displacement, min_x, max_x, min_y, max_y, interp_res, render_W, render_H)
+    
+    # Generate particle colors
+    particle_colors = _generate_particle_colors(particles, trace_color, random_colors, grid.device)
+    
+    # Create RGB accumulator
+    accumulator = _create_rgb_accumulator(render_H, render_W, bg_color, grid.device)
+    
+    # Run particle simulation
+    _simulate_particles(F_vectorized, particles, steps, step_size, render_W, render_H, particle_colors, accumulator, grid.device)
+    
+    print("Converting to rgb image...")
+    img = _fast_tensor_to_pil(accumulator)
+    
+    # Downsample if antialiasing was used
+    if antialias:
+        img = img.resize((W, H), Image.Resampling.LANCZOS)
+    
+    return img
 
 
 def _interpolate_grid(grid_points, values, interp_res):
@@ -31,7 +60,7 @@ def _interpolate_grid(grid_points, values, interp_res):
     
     # Determine original grid size (assuming it's roughly square)
     n_points = len(grid_points)
-    orig_res = int(torch.sqrt(torch.tensor(n_points, dtype=torch.float)).item())
+    orig_res = int(torch.sqrt(torch.tensor(n_points, dtype=torch.float, device=device)).item())
     
     # If the original data forms a regular grid, reshape it
     if orig_res * orig_res == n_points:
@@ -39,7 +68,7 @@ def _interpolate_grid(grid_points, values, interp_res):
         values_2d = values.view(orig_res, orig_res)
     else:
         # Find closest square size
-        orig_res = int(torch.sqrt(torch.tensor(n_points, dtype=torch.float)).ceil().item())
+        orig_res = int(torch.sqrt(torch.tensor(n_points, dtype=torch.float, device=device)).ceil().item())
         # Pad if needed and reshape
         values_padded = torch.cat([values, torch.zeros(orig_res*orig_res - n_points, device=device)])
         values_2d = values_padded.view(orig_res, orig_res)
@@ -161,70 +190,6 @@ def _simulate_particles(F_vectorized, particles, steps, step_size, W, H, particl
         particle_colors = particle_colors[valid]
 
 
-def _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors):
-    """
-    Base vectorized rendering with RGB color support.
-    """
-    # Get grid bounds
-    min_x = grid[:, 0].min().item()
-    max_x = grid[:, 0].max().item()
-    min_y = grid[:, 1].min().item()
-    max_y = grid[:, 1].max().item()
-    
-    # Create interpolation function
-    interp_res = 512
-    F_vectorized = _create_interpolation_function(grid, displacement, min_x, max_x, min_y, max_y, interp_res, W, H)
-    
-    # Generate particle colors
-    particle_colors = _generate_particle_colors(particles, trace_color, random_colors, grid.device)
-    
-    # Create RGB accumulator
-    accumulator = _create_rgb_accumulator(H, W, bg_color, grid.device)
-    
-    # Run particle simulation
-    _simulate_particles(F_vectorized, particles, steps, step_size, W, H, particle_colors, accumulator, grid.device)
-    
-    # Convert RGB accumulator to image
-    img_array = accumulator.clamp(0, 255).cpu().numpy().astype('uint8')
-    img = Image.fromarray(img_array, mode='RGB')
-    
-    return img
-
-
-def _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors, aa_factor):
-    """
-    Vectorized rendering with supersampling antialiasing and RGB color support.
-    """
-    # Render at higher resolution
-    high_W, high_H = W * aa_factor, H * aa_factor
-    
-    # Get grid bounds
-    min_x = grid[:, 0].min().item()
-    max_x = grid[:, 0].max().item()
-    min_y = grid[:, 1].min().item()
-    max_y = grid[:, 1].max().item()
-    
-    # Create interpolation function (using high resolution dimensions)
-    interp_res = 512
-    F_vectorized = _create_interpolation_function(grid, displacement, min_x, max_x, min_y, max_y, interp_res, high_W, high_H)
-    
-    # Generate particle colors
-    particle_colors = _generate_particle_colors(particles, trace_color, random_colors, grid.device)
-    
-    # Create RGB accumulator at high resolution
-    accumulator = _create_rgb_accumulator(high_H, high_W, bg_color, grid.device)
-    
-    # Run particle simulation at high resolution
-    _simulate_particles(F_vectorized, particles, steps, step_size, high_W, high_H, particle_colors, accumulator, grid.device)
-    
-    # Convert RGB accumulator to image
-    img_array = accumulator.clamp(0, 255).cpu().numpy().astype('uint8')
-    img = Image.fromarray(img_array, mode='RGB')
-    
-    # Downsample using high-quality resampling
-    return img.resize((W, H), Image.Resampling.LANCZOS)
-
-
 def _draw_lines_rgb(accumulator, x1, y1, x2, y2, colors):
     """
     Fast vectorized RGB line drawing - draws endpoints and midpoints.
@@ -254,3 +219,21 @@ def _draw_lines_rgb(accumulator, x1, y1, x2, y2, colors):
     x_mid = ((x1_int + x2_int) // 2).clamp(0, W-1)
     y_mid = ((y1_int + y2_int) // 2).clamp(0, H-1)
     accumulator[y_mid, x_mid, :] = colors
+
+
+def _fast_tensor_to_pil(tensor, mode='RGB'):
+    """
+    Ultra-fast tensor to PIL conversion with memory optimization.
+    For very large tensors, this can be significantly faster.
+    """
+    with torch.no_grad():
+        # Ensure tensor is on CPU and in the right format
+        if tensor.is_cuda:
+            tensor = tensor.cpu()
+        
+        # Convert to uint8 efficiently
+        if tensor.dtype != torch.uint8:
+            tensor = tensor.clamp(0, 255).byte()
+        
+        # Convert to numpy and create PIL image
+        return Image.fromarray(tensor.numpy(), mode=mode)
