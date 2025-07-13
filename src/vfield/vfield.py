@@ -4,15 +4,23 @@ from PIL import Image
 from tqdm import tqdm
 
 
-def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, bg_color=0, antialias=False, aa_factor=2) -> Image.Image:
+def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, 
+                     bg_color=(0, 0, 0), trace_color=(255, 255, 255), random_colors=False, 
+                     antialias=False, aa_factor=2) -> Image.Image:
     """
-    Vectorized flow field rendering - processes all particles simultaneously.
-    Much faster than the loop-based version.
+    Vectorized flow field rendering with proper RGB color support.
+    
+    Args:
+        bg_color: Background color as RGB tuple (r, g, b) where each value is 0-255
+        trace_color: Default trace color as RGB tuple (r, g, b) where each value is 0-255
+        random_colors: If True, each particle trail will be drawn with a random color variation
+        antialias: Enable antialiasing for smoother output
+        aa_factor: Antialiasing factor (higher = better quality but slower)
     """
     if antialias:
-        return _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, aa_factor)
+        return _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors, aa_factor)
     else:
-        return _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color)
+        return _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors)
 
 
 def _interpolate_grid(grid_points, values, interp_res):
@@ -46,9 +54,9 @@ def _interpolate_grid(grid_points, values, interp_res):
     return interpolated.squeeze(0).squeeze(0)  # [interp_res, interp_res]
 
 
-def _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color):
+def _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors):
     """
-    Base vectorized rendering without antialiasing.
+    Base vectorized rendering with RGB color support.
     """
     # Pre-compute interpolation on a dense grid for speed
     min_x = grid[:, 0].min().item()
@@ -84,8 +92,32 @@ def _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color
     pos_x = torch.rand(particles, device=grid.device) * W
     pos_y = torch.rand(particles, device=grid.device) * H
     
-    # Create accumulator for drawing - start with background color
-    accumulator = torch.full((H, W), float(bg_color), dtype=torch.float32, device=grid.device)
+    # Generate colors for each particle
+    if random_colors:
+        particle_colors = torch.zeros((particles, 3), device=grid.device)
+        
+        # Check if trace color is black (0, 0, 0) for grayscale variations
+        if trace_color == (0, 0, 0):
+            # For black trace color, generate grayscale variations (same value for all channels)
+            grayscale_values = torch.rand(particles, device=grid.device) * 255  # 0 to 255
+            particle_colors[:, 0] = grayscale_values  # R
+            particle_colors[:, 1] = grayscale_values  # G  
+            particle_colors[:, 2] = grayscale_values  # B
+        else:
+            # For non-black colors, generate random RGB variations around the base trace color
+            for i in range(3):  # R, G, B channels
+                # Add random variation (±50) to each channel
+                variation = (torch.rand(particles, device=grid.device) - 0.5) * 100
+                particle_colors[:, i] = torch.clamp(trace_color[i] + variation, 0, 255)
+    else:
+        # All particles use the same trace color
+        particle_colors = torch.tensor(trace_color, device=grid.device).float().unsqueeze(0).expand(particles, 3)
+    
+    # Create RGB accumulator - start with background color
+    accumulator = torch.zeros((H, W, 3), dtype=torch.float32, device=grid.device)
+    accumulator[:, :, 0] = bg_color[0]  # R
+    accumulator[:, :, 1] = bg_color[1]  # G
+    accumulator[:, :, 2] = bg_color[2]  # B
     
     # Vectorized integration loop
     for step in tqdm(range(steps)):
@@ -110,25 +142,25 @@ def _render_base(grid, displacement, W, H, particles, steps, step_size, bg_color
             
         # Draw lines from old to new positions (vectorized)
         if step > 0:  # Skip first step
-            _draw_lines(accumulator, pos_x[valid], pos_y[valid], 
+            _draw_lines_rgb(accumulator, pos_x[valid], pos_y[valid], 
                          new_pos_x[valid], new_pos_y[valid], 
-                         255 - bg_color)
+                         particle_colors[valid])
 
-        # Update positions (only for valid particles)
+        # Update positions and colors (only for valid particles)
         pos_x = new_pos_x[valid]
         pos_y = new_pos_y[valid]
+        particle_colors = particle_colors[valid]
     
-    # Convert accumulator to image
+    # Convert RGB accumulator to image
     img_array = accumulator.clamp(0, 255).cpu().numpy().astype('uint8')
-    img = Image.fromarray(img_array, mode='L')
+    img = Image.fromarray(img_array, mode='RGB')
     
     return img
 
 
-def _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, aa_factor):
+def _render_supersampled(grid, displacement, W, H, particles, steps, step_size, bg_color, trace_color, random_colors, aa_factor):
     """
-    Vectorized rendering with supersampling antialiasing.
-    Renders at higher resolution and downsamples for smooth results.
+    Vectorized rendering with supersampling antialiasing and RGB color support.
     """
     # Render at higher resolution
     high_W, high_H = W * aa_factor, H * aa_factor
@@ -167,8 +199,32 @@ def _render_supersampled(grid, displacement, W, H, particles, steps, step_size, 
     pos_x = torch.rand(particles, device=grid.device) * high_W
     pos_y = torch.rand(particles, device=grid.device) * high_H
     
-    # Create accumulator for drawing at high resolution - start with background color
-    accumulator = torch.full((high_H, high_W), float(bg_color), dtype=torch.float32, device=grid.device)
+    # Generate colors for each particle
+    if random_colors:
+        particle_colors = torch.zeros((particles, 3), device=grid.device)
+        
+        # Check if trace color is black (0, 0, 0) for grayscale variations
+        if trace_color == (0, 0, 0):
+            # For black trace color, generate grayscale variations (same value for all channels)
+            grayscale_values = torch.rand(particles, device=grid.device) * 255  # 0 to 255
+            particle_colors[:, 0] = grayscale_values  # R
+            particle_colors[:, 1] = grayscale_values  # G  
+            particle_colors[:, 2] = grayscale_values  # B
+        else:
+            # For non-black colors, generate random RGB variations around the base trace color
+            for i in range(3):  # R, G, B channels
+                # Add random variation (±50) to each channel
+                variation = (torch.rand(particles, device=grid.device) - 0.5) * 100
+                particle_colors[:, i] = torch.clamp(trace_color[i] + variation, 0, 255)
+    else:
+        # All particles use the same trace color
+        particle_colors = torch.tensor(trace_color, device=grid.device).float().unsqueeze(0).expand(particles, 3)
+    
+    # Create RGB accumulator at high resolution - start with background color
+    accumulator = torch.zeros((high_H, high_W, 3), dtype=torch.float32, device=grid.device)
+    accumulator[:, :, 0] = bg_color[0]  # R
+    accumulator[:, :, 1] = bg_color[1]  # G
+    accumulator[:, :, 2] = bg_color[2]  # B
     
     # Vectorized integration loop
     for step in tqdm(range(steps)):
@@ -193,26 +249,61 @@ def _render_supersampled(grid, displacement, W, H, particles, steps, step_size, 
             
         # Draw lines from old to new positions (vectorized)
         if step > 0:  # Skip first step
-            _draw_lines(accumulator, pos_x[valid], pos_y[valid], 
+            _draw_lines_rgb(accumulator, pos_x[valid], pos_y[valid], 
                                  new_pos_x[valid], new_pos_y[valid], 
-                                 255 - bg_color)
+                                 particle_colors[valid])
         
-        # Update positions (only for valid particles)
+        # Update positions and colors (only for valid particles)
         pos_x = new_pos_x[valid]
         pos_y = new_pos_y[valid]
+        particle_colors = particle_colors[valid]
     
-    # Convert accumulator to image
+    # Convert RGB accumulator to image
     img_array = accumulator.clamp(0, 255).cpu().numpy().astype('uint8')
-    img = Image.fromarray(img_array, mode='L')
+    img = Image.fromarray(img_array, mode='RGB')
     
-    # Downsample using high-quality resampling (same as non-vectorized version)
+    # Downsample using high-quality resampling
     return img.resize((W, H), Image.Resampling.LANCZOS)
+
+
+def _draw_lines_rgb(accumulator, x1, y1, x2, y2, colors):
+    """
+    Fast vectorized RGB line drawing - draws endpoints and midpoints.
+    
+    Args:
+        accumulator: RGB tensor of shape (H, W, 3)
+        colors: RGB colors tensor of shape (N, 3) where N is number of lines
+    """
+    H, W, _ = accumulator.shape
+    
+    # Convert to integer coordinates
+    x1_int = x1.long().clamp(0, W-1)
+    y1_int = y1.long().clamp(0, H-1)
+    x2_int = x2.long().clamp(0, W-1)  
+    y2_int = y2.long().clamp(0, H-1)
+    
+    # Ensure colors have the correct dtype
+    colors = colors.float()
+    
+    # Draw start points (all RGB channels)
+    accumulator[y1_int, x1_int, :] = colors
+    
+    # Draw end points  
+    accumulator[y2_int, x2_int, :] = colors
+    
+    # Draw midpoints for better line appearance
+    x_mid = ((x1_int + x2_int) // 2).clamp(0, W-1)
+    y_mid = ((y1_int + y2_int) // 2).clamp(0, H-1)
+    accumulator[y_mid, x_mid, :] = colors
 
 
 def _draw_lines(accumulator, x1, y1, x2, y2, intensity):
     """
     Fast vectorized line drawing - just draw endpoints and midpoints.
     Much faster than full line rasterization.
+    
+    Args:
+        intensity: Can be a single value or a tensor with one value per line
     """
     H, W = accumulator.shape
     
@@ -221,6 +312,12 @@ def _draw_lines(accumulator, x1, y1, x2, y2, intensity):
     y1_int = y1.long().clamp(0, H-1)
     x2_int = x2.long().clamp(0, W-1)  
     y2_int = y2.long().clamp(0, H-1)
+    
+    # Ensure intensity has the correct dtype to match accumulator
+    if torch.is_tensor(intensity):
+        intensity = intensity.float()
+    else:
+        intensity = float(intensity)
     
     # Draw start points
     accumulator[y1_int, x1_int] = intensity  # Set to line color directly
