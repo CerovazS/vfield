@@ -1,6 +1,6 @@
 # 𖦹 vfield
 
-A simple Python library for creating eye-pleasing flow field visualizations from vector field data.
+A simple Python library for creating eye-pleasing **particle-based flow field** visualizations from vector field data.
 
 ![gen](./teaser.png)
 
@@ -12,7 +12,7 @@ A simple Python library for creating eye-pleasing flow field visualizations from
 
 🎯 Full control over particle count, step count, and step size
 
-🧈 Smooth rendering with built-in antialiasing
+🖌 Smooth rendering with built-in antialiasing
 
 🎨 Custom color schemes to match your aesthetic
 

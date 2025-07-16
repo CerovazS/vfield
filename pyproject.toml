@@ -1,15 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "vfield"
 version = "0.1.0"
-description = "Add your description here"
+description = "Vector field visualization and flow field rendering"
 readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Emanuele Rodolà", email = "rodola@di.uniroma1.it"}
+]
 requires-python = ">=3.11"
 dependencies = [
     "ipykernel>=6.29.5",
     "lic>=0.4.5",
     "matplotlib>=3.10.3",
     "pillow>=11.3.0",
-    "plotly>=6.2.0",
     "scipy>=1.16.0",
     "torch>=2.7.1",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
