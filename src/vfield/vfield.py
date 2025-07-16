@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 
 def render_flow_field(grid, displacement, W=1000, H=1000, particles=2_000, steps=100, step_size=0.002, 
-                     bg_color=(0, 0, 0), trace_color=(255, 255, 255), random_colors=False, 
+                     bg_color=(255, 255, 255), trace_color=(0, 0, 0), random_colors=False, 
                      antialias=True, aa_factor=2) -> Image.Image:
     """
     Vectorized flow field rendering with proper RGB color support.
