@@ -18,6 +18,25 @@ A simple Python library for creating eye-pleasing **particle-based flow field** 
 
 🚀 GPU acceleration for fast rendering on supported hardware
 
+## Installation
+
+```bash
+git clone https://github.com/erodola/vfield.git
+cd vfield
+uv venv
+uv pip install -e .
+```
+
+Verify with:
+
+```bash
+source .venv/bin/activate  # macOS/Linux
+# OR
+.venv\Scripts\activate     # Windows
+
+python -c "import vfield; print('vfield installed successfully!')"
+```
+
 ## Quick Start
 
 ```python
@@ -47,7 +66,7 @@ See the [notebooks/](notebooks/) directory for detailed examples:
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.11+
 - PyTorch
 - Matplotlib
 - Pillow
